@@ -42,14 +42,11 @@ const fetchSheetData = async (apiKey, spreadsheetId, sheetName) => {
   }
 };
 
-// Fungsi untuk format rupiah
+// Fungsi untuk format rupiah - TIDAK DISINGKAT
 const formatRupiah = (amount) => {
   if (!amount) return "Rp 0";
   const numStr = amount.toString().replace(/[^0-9]/g, "");
   const num = parseInt(numStr);
-  if (num >= 1000000) {
-    return "Rp " + (num / 1000000).toFixed(1) + "jt";
-  }
   return "Rp " + num.toLocaleString("id-ID");
 };
 
@@ -72,6 +69,19 @@ const parseDate = (dateStr) => {
   return new Date(year, month - 1, day);
 };
 
+// Fungsi untuk format tanggal lengkap dengan hari
+const formatFullDate = (dateStr) => {
+  if (!dateStr) return "-";
+  const [year, month, day] = dateStr.split("-");
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+};
+
 // Komponen ProgressBar
 const ProgressBar = ({ percentage, color, label, amount }) => (
   <div className="mb-4">
@@ -84,6 +94,69 @@ const ProgressBar = ({ percentage, color, label, amount }) => (
         className={`h-2.5 rounded-full ${color}`}
         style={{ width: `${percentage}%` }}
       ></div>
+    </div>
+  </div>
+);
+
+// Komponen untuk tabel kategori
+const CategoryTable = ({
+  categories,
+  title,
+  icon,
+  color,
+  isIncome = false,
+}) => (
+  <div className="bg-white rounded-xl p-4 shadow-md">
+    <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+      {icon}
+      {title}
+    </h4>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-100">
+            <th className="text-left py-2 text-gray-600 font-medium">No</th>
+            <th className="text-left py-2 text-gray-600 font-medium">
+              Kategori
+            </th>
+            <th className="text-right py-2 text-gray-600 font-medium">Total</th>
+            <th className="text-right py-2 text-gray-600 font-medium">
+              Jumlah
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {categories.length > 0 ? (
+            categories.map((category, index) => (
+              <tr
+                key={category.category}
+                className="border-b border-gray-50 hover:bg-gray-50"
+              >
+                <td className="py-2 font-medium text-gray-500">{index + 1}</td>
+                <td className="py-2 font-medium text-gray-700">
+                  {category.category}
+                </td>
+                <td
+                  className={`py-2 text-right font-medium ${
+                    isIncome ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {formatRupiah(category.total)}
+                </td>
+                <td className="py-2 text-right text-gray-700 font-medium">
+                  {category.count}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="4" className="py-4 text-center text-gray-400">
+                Tidak ada data
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   </div>
 );
@@ -197,24 +270,22 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
 
   const categoryStats = calculateCategoryStats();
 
-  // Calculate summary - Hanya untuk internal use, tidak ditampilkan
-  const summary = filteredTransactions.reduce(
-    (acc, t) => {
-      const amount = parseInt(
-        (t.Total || "0").toString().replace(/[^0-9]/g, "")
-      );
-      if (t.Jenis === "Income") {
-        acc.income += amount;
-      } else {
-        acc.expense += amount;
-      }
-      acc.count++;
-      return acc;
-    },
-    { income: 0, expense: 0, count: 0 }
+  // Get highest EXPENSE transaction (not income)
+  const expenseTransactions = filteredTransactions.filter(
+    (t) => t.Jenis === "Expense"
   );
-
-  const balance = summary.income - summary.expense;
+  const highestExpenseTransaction =
+    expenseTransactions.length > 0
+      ? expenseTransactions.reduce((max, current) => {
+          const currentAmount = parseInt(
+            (current.Total || "0").toString().replace(/[^0-9]/g, "")
+          );
+          const maxAmount = parseInt(
+            (max.Total || "0").toString().replace(/[^0-9]/g, "")
+          );
+          return currentAmount > maxAmount ? current : max;
+        })
+      : null;
 
   // Get top categories (by expense) untuk progress bar
   const topExpenseCategories = categoryStats.expense.slice(0, 5);
@@ -240,20 +311,6 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
     }
   });
 
-  // Get highest transaction
-  const highestTransaction =
-    filteredTransactions.length > 0
-      ? filteredTransactions.reduce((max, current) => {
-          const currentAmount = parseInt(
-            (current.Total || "0").toString().replace(/[^0-9]/g, "")
-          );
-          const maxAmount = parseInt(
-            (max.Total || "0").toString().replace(/[^0-9]/g, "")
-          );
-          return currentAmount > maxAmount ? current : max;
-        })
-      : null;
-
   // Format period text
   const getPeriodText = () => {
     if (selectedPeriod === "all") {
@@ -265,19 +322,6 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
       year: "numeric",
     });
     return `${monthName}`;
-  };
-
-  // Format full date for most active day
-  const formatFullDate = (dateStr) => {
-    if (!dateStr) return "-";
-    const [year, month, day] = dateStr.split("-");
-    const date = new Date(year, month - 1, day);
-    return date.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
   };
 
   return (
@@ -310,13 +354,13 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
           </select>
         </div>
 
-        {/* Top Transaction Card */}
-        {highestTransaction && (
+        {/* Top Expense Transaction Card */}
+        {highestExpenseTransaction && (
           <div className="mb-6 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl p-4 border border-orange-100">
             <div className="flex items-center justify-between mb-3">
               <h4 className="font-bold text-sm text-gray-800 flex items-center gap-2">
                 <FaFire className="text-orange-500" />
-                Transaksi Tertinggi
+                Pengeluaran Tertinggi
               </h4>
               <span className="bg-orange-100 text-orange-800 text-xs font-bold px-2 py-1 rounded">
                 TERBESAR
@@ -326,26 +370,28 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
               <div className="flex justify-between items-center mb-2">
                 <div className="flex-1">
                   <p className="font-bold text-gray-800 text-sm truncate">
-                    {highestTransaction.Items}
+                    {highestExpenseTransaction.Items}
                   </p>
                   <p className="text-gray-500 text-xs">
-                    {highestTransaction.Kategori || "Lainnya"}
+                    {highestExpenseTransaction.Kategori || "Lainnya"}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-lg text-orange-600">
-                    {formatRupiah(highestTransaction.Total)}
+                    {formatRupiah(highestExpenseTransaction.Total)}
                   </p>
                 </div>
               </div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-100">
                 <div className="flex items-center gap-1 text-gray-500 text-xs">
                   <FaStore className="text-xs" />
-                  <span>{highestTransaction.Toko || "-"}</span>
+                  <span>{highestExpenseTransaction.Toko || "-"}</span>
                 </div>
                 <div className="flex items-center gap-1 text-gray-500 text-xs">
                   <FaCalendarAlt className="text-xs" />
-                  <span>{formatDate(highestTransaction["Tanggal Struk"])}</span>
+                  <span>
+                    {formatDate(highestExpenseTransaction["Tanggal Struk"])}
+                  </span>
                 </div>
               </div>
             </div>
@@ -356,7 +402,7 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
         {mostActiveDate && maxTransactions > 0 && (
           <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
             <h4 className="font-bold text-sm text-gray-800 mb-2">
-              Hari dengan Transaksi Terbanyak
+              Hari Transaksi Terbanyak
             </h4>
             <div className="flex items-center justify-between">
               <div>
@@ -413,114 +459,22 @@ const StatisticsTab = ({ transactions, selectedPeriod, setSelectedPeriod }) => {
       </div>
 
       {/* Income Categories Table */}
-      <div className="bg-white rounded-xl p-4 shadow-md">
-        <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <FaMoneyBillWave className="text-green-500" />
-          Kategori Pemasukan
-        </h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 text-gray-600 font-medium">No</th>
-                <th className="text-left py-2 text-gray-600 font-medium">
-                  Kategori
-                </th>
-                <th className="text-right py-2 text-gray-600 font-medium">
-                  Total
-                </th>
-                <th className="text-right py-2 text-gray-600 font-medium">
-                  Jumlah
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {categoryStats.income.length > 0 ? (
-                categoryStats.income.map((category, index) => (
-                  <tr
-                    key={category.category}
-                    className="border-b border-gray-50 hover:bg-gray-50"
-                  >
-                    <td className="py-2 font-medium text-gray-500">
-                      {index + 1}
-                    </td>
-                    <td className="py-2 font-medium text-gray-700">
-                      {category.category}
-                    </td>
-                    <td className="py-2 text-right text-green-600 font-medium">
-                      {formatRupiah(category.total)}
-                    </td>
-                    <td className="py-2 text-right text-gray-700 font-medium">
-                      {category.count}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="4" className="py-4 text-center text-gray-400">
-                    Tidak ada data pemasukan
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <CategoryTable
+        categories={categoryStats.income}
+        title="Kategori Pemasukan"
+        icon={<FaMoneyBillWave className="text-green-500" />}
+        color="green"
+        isIncome={true}
+      />
 
       {/* Expense Categories Table */}
-      <div className="bg-white rounded-xl p-4 shadow-md">
-        <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <FaShoppingCart className="text-red-500" />
-          Kategori Pengeluaran
-        </h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 text-gray-600 font-medium">No</th>
-                <th className="text-left py-2 text-gray-600 font-medium">
-                  Kategori
-                </th>
-                <th className="text-right py-2 text-gray-600 font-medium">
-                  Total
-                </th>
-                <th className="text-right py-2 text-gray-600 font-medium">
-                  Jumlah
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {categoryStats.expense.length > 0 ? (
-                categoryStats.expense.map((category, index) => (
-                  <tr
-                    key={category.category}
-                    className="border-b border-gray-50 hover:bg-gray-50"
-                  >
-                    <td className="py-2 font-medium text-gray-500">
-                      {index + 1}
-                    </td>
-                    <td className="py-2 font-medium text-gray-700">
-                      {category.category}
-                    </td>
-                    <td className="py-2 text-right text-red-600 font-medium">
-                      {formatRupiah(category.total)}
-                    </td>
-                    <td className="py-2 text-right text-gray-700 font-medium">
-                      {category.count}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="4" className="py-4 text-center text-gray-400">
-                    Tidak ada data pengeluaran
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <CategoryTable
+        categories={categoryStats.expense}
+        title="Kategori Pengeluaran"
+        icon={<FaShoppingCart className="text-red-500" />}
+        color="red"
+        isIncome={false}
+      />
     </div>
   );
 };
@@ -731,8 +685,7 @@ function App() {
                   balance >= 0 ? "text-white" : "text-red-400"
                 }`}
               >
-                {balance >= 0 ? "+" : ""} Rp{" "}
-                {Math.abs(balance).toLocaleString("id-ID")}
+                {balance >= 0 ? "+" : "-"} {formatRupiah(Math.abs(balance))}
               </p>
 
               <div className="grid grid-cols-2 gap-1.5">
@@ -903,7 +856,7 @@ function App() {
       )}
 
       {/* Main Content */}
-      <div className="max-w-md mx-auto px-4 py-4">
+      <div className="max-w-md mx-auto px-2 py-4">
         {activeTab === "transactions" ? (
           /* Transactions List */
           <div className="space-y-3">
@@ -962,7 +915,7 @@ function App() {
                               {transaction.Jenis}
                             </span>
                             {transaction.Kategori && (
-                              <p className="text-xs text-gray-500 bg-gray-50 inline-block px-2 py-0.5 rounded truncate max-w-28">
+                              <p className="text-xs text-gray-500 bg-gray-50 inline-block px-2 py-0.5 rounded truncate max-w-27">
                                 {transaction.Kategori}
                               </p>
                             )}
