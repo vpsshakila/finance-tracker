@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  finance-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_API_KEY: ${VITE_GOOGLE_API_KEY}
+        VITE_SPREADSHEET_ID: ${VITE_SPREADSHEET_ID}
+        VITE_SHEET_NAME: ${VITE_SHEET_NAME}
+    container_name: finance-tracker
+    restart: unless-stopped
+    ports:
+      - "4000:3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - finance-network
+
+networks:
+  finance-network:
+    driver: bridge
+```
+
+### **.dockerignore**
+```
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.local
+README.md
+.DS_Store
+*.log
